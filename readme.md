@@ -1,7 +1,7 @@
 Installation of `survtmle` package
 ----------------------------------
 
-And beta verion of an `R` package is currently available on GitHub and can be installed as follows.
+A beta verion of an `R` package is currently available on GitHub and can be installed as follows.
 
 ``` r
 # need devtools package for github install
@@ -43,13 +43,7 @@ Below we implement code that estimates the cumulative incidence for both matched
 # will need package rpart and randomforest
 library(rpart)
 library(randomForest)
-```
 
-    ## randomForest 4.6-12
-
-    ## Type rfNews() to see new features/changes/bug fixes.
-
-``` r
 # set a seed because superlearner uses cross validation
 set.seed(12345)
 
