@@ -1,12 +1,21 @@
 ---
-output: pdf_document
+title: "Estimation and testing of vaccine sieve effects using machine learning"
+author: "Blinded"
+date: "October 6, 2016"
+output:
+    md_document:
+        variant: markdown_github
 ---
-Installation of `survtmle` package
-----------------------------------
+    
+    
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
 
-A beta verion of an `R` package is currently available on GitHub and can be installed as follows.
+## Installation of `survtmle` package
+A beta verion of an `R` package is currently available on GitHub and can be installed as follows. 
 
-``` r
+```{r, message = FALSE}
 # need devtools package for github install
 library(devtools)
 
@@ -19,12 +28,10 @@ library(survtmle)
 
 The main function in the package is the `survtmle` function, which computes the cumulative incidence for specified failure type(s). See `?survtmle` for more details, including examples using simulated data.
 
-Mock RV144 analysis
--------------------
+## Mock RV144 analysis
+Below, we produce an analysis of the mock RV144 data that are included with the `survtmle` package. See `?rv144` for more description of the data set. 
 
-Below, we produce an analysis of the mock RV144 data that are included with the `survtmle` package. See `?rv144` for more description of the data set.
-
-``` r
+```{r}
 # load the data from the package
 data(rv144)
 
@@ -32,17 +39,9 @@ data(rv144)
 head(rv144)
 ```
 
-    ##   ftime ftype vax male year04 year05 medRisk highRisk medAge highAge
-    ## 1     6     0   0    1      1      0       1        0      0       0
-    ## 2     6     0   1    1      0      0       1        0      1       0
-    ## 3     6     0   1    1      0      1       1        0      0       0
-    ## 4     6     0   0    0      1      0       0        0      0       1
-    ## 5     3     0   0    0      0      1       0        1      1       0
-    ## 6     6     0   1    1      0      1       1        0      0       1
+Below we implement code that estimates the cumulative incidence for both matched and mismatched infections in both the vaccine and treatment arms. For computational convenience, we use a simplified Super Learner library relative to the one used in the manuscript. If one desires to use the same library as in the manuscript, those functions are available in the `superlearnerfunctions_rv144.R` file and can be implemented by sourcing the code from that file and uncommenting the `SL.ftime` and `SL.ctime` lines below. 
 
-Below we implement code that estimates the cumulative incidence for both matched and mismatched infections in both the vaccine and treatment arms. For computational convenience, we use a simplified Super Learner library relative to the one used in the manuscript. If one desires to use the same library as in the manuscript, those functions are available in the `superlearnerfunctions_rv144.R` file and can be implemented by sourcing the code from that file and uncommenting the `SL.ftime` and `SL.ctime` lines below.
-
-``` r
+```{r, message = FALSE}
 # will need package rpart and randomforest
 library(rpart)
 library(randomForest)
@@ -74,23 +73,9 @@ tmle.fit <- survtmle(
 tmle.fit
 ```
 
-    ## $est
-    ##            [,1]
-    ## 0 1 0.007150713
-    ## 1 1 0.004356130
-    ## 0 2 0.001371584
-    ## 1 2 0.001871588
-    ## 
-    ## $var
-    ##               0 1           1 1           0 2           1 2
-    ## 0 1  9.530630e-07  1.163370e-10 -1.304589e-09  1.261261e-10
-    ## 1 1  1.163370e-10  5.832930e-07  2.708323e-11 -1.146398e-09
-    ## 0 2 -1.304589e-09  2.708323e-11  1.835037e-07  1.173578e-11
-    ## 1 2  1.261261e-10 -1.146398e-09  1.173578e-11  2.550053e-07
+We can now use a call to the `timepoints` function in the `survtmle` package to obtain estimates at the first five scheduled visits. 
 
-We can now use a call to the `timepoints` function in the `survtmle` package to obtain estimates at the first five scheduled visits.
-
-``` r
+```{r}
 # call timepoints to estimate incidence at each timepoint
 tp.fit <- timepoints(
     object = tmle.fit, 
@@ -102,23 +87,9 @@ tp.fit <- timepoints(
 tp.fit$t3
 ```
 
-    ## $est
-    ##             [,1]
-    ## 0 1 0.0036631222
-    ## 1 1 0.0012796087
-    ## 0 2 0.0005103480
-    ## 1 2 0.0007621896
-    ## 
-    ## $var
-    ##               0 1           1 1           0 2           1 2
-    ## 0 1  4.605608e-07  5.287881e-11 -2.428045e-10  6.110277e-11
-    ## 1 1  5.287881e-11  1.592924e-07  1.123397e-11 -1.527312e-10
-    ## 0 2 -2.428045e-10  1.123397e-11  6.437163e-08  6.872899e-12
-    ## 1 2  6.110277e-11 -1.527312e-10  6.872899e-12  9.505477e-08
+We now define a function `getVE` that we use to help transform the results from the cumulative incidence scale to the vaccine efficacy and vaccine sieve effects scale. The function is not yet included in the `survtmle` package, but may be in the future. 
 
-We now define a function `getVE` that we use to help transform the results from the cumulative incidence scale to the vaccine efficacy and vaccine sieve effects scale. The function is not yet included in the `survtmle` package, but may be in the future.
-
-``` r
+```{r}
 #' getVE
 #' 
 #' A function that uses output from a survtmle object to compute
@@ -210,17 +181,10 @@ ve.fit <- getVE(tp.fit)
 ve.fit$t6
 ```
 
-    ##            est      ci.low   ci.high          p
-    ## ve1  0.3908118  0.05835564 0.6058912 0.02570707
-    ## ve2 -0.3645449 -2.06406882 0.3923169 0.45138282
-    ## vse  2.2399398  0.89274302 5.6201283 0.08574857
-
-Plotting the results
---------------------
-
+## Plotting the results
 Below is the plot code used to generate the manuscript figures.
 
-``` r
+```{r, cache = TRUE}
 # figure dimensions -- used to compute appropriate margins
 figure.width <- 8
 figure.height <- 5.5
@@ -320,14 +284,9 @@ segments(x0=4:6,y0=vse[4:6,2],y1=vse[4:6,3])
 arrows(x0=2:3,y0=vse[2:3,2],y1=12,length=0.075)
 ```
 
-![](readme_files/figure-markdown_github/unnamed-chunk-6-1.png)
-
-Mock RTS,S/AS01 analysis
-------------------------
-
-We now produce an analysis of the multiply outputed mock RTS,S/AS01 data that are included with the `survtmle` package. See `?rtss` for further description of the data set.
-
-``` r
+## Mock RTS,S/AS01 analysis
+We now produce an analysis of the multiply outputed mock RTS,S/AS01 data that are included with the `survtmle` package. See `?rtss` for further description of the data set. 
+```{r}
 # load the data from the package
 data(rtss)
 
@@ -335,31 +294,10 @@ data(rtss)
 head(rtss[[1]])
 ```
 
-    ##   ftime ftype vaccine ageWeeks weightForAgeZscore sex site1 site2 site3
-    ## 1     1     2       0       24        -1.76752196   0     0     0     0
-    ## 2    11     0       0       43        -0.15242755   1     1     0     0
-    ## 3    12     0       1       64        -1.29467573   0     0     0     1
-    ## 4    12     0       1       45         0.04930793   1     1     0     0
-    ## 5     1     0       1       72        -2.14905375   1     0     0     1
-    ## 6    12     0       0       47        -1.16692242   1     0     0     1
-    ##   site4 site5 heightForAgeZscore weightForHeightZscore armCircumZscore
-    ## 1     1     0        -0.46929480            -2.2368340      -1.5297559
-    ## 2     0     0        -0.07157323            -0.1274793      -0.2025151
-    ## 3     0     0        -1.93292932             0.1712379      -0.7105710
-    ## 4     0     0        -0.79276250             0.4606719       0.5164577
-    ## 5     0     0        -3.01736881            -0.6988993      -1.6883392
-    ## 6     0     0        -1.72782830            -1.1329046      -0.9535694
-    ##       hemog distInpatient distOutpatient startMonthCat
-    ## 1  9.388641     8.8817389      3.4446690             0
-    ## 2  9.844717    13.4724945      0.9352634             0
-    ## 3 11.159146     8.7846917      0.4648378             0
-    ## 4 12.223923    24.6145392      4.3018327             1
-    ## 5  8.812265    12.0307045      5.9528733             0
-    ## 6  8.963886     0.9994255      0.9952656             0
+For simplicity, we will focus on implementing the analysis at a single timepoint to illustrate how the multiple outputation procedure works. The `timepoints` function could easily be used to duplicate the analysis across every one month period. As with the RV144 analysis above, we will show code
+illustrating the method using a simplified Super Learner library. If one desires to use the Super Learner library from the paper, those functions are available in the `superlearnerfunctions_rtss.RData` file. 
 
-For simplicity, we will focus on implementing the analysis at a single timepoint to illustrate how the multiple outputation procedure works. The `timepoints` function could easily be used to duplicate the analysis across every one month period. As with the RV144 analysis above, we will show code illustrating the method using a simplified Super Learner library. If one desires to use the Super Learner library from the paper, those functions are available in the `superlearnerfunctions_rtss.RData` file.
-
-``` r
+```{r, message = FALSE}
 # needed packages 
 library(rpart)
 library(randomForest)
@@ -409,32 +347,15 @@ for(m in 1:10){
         returnModels = FALSE # to save space
     )
 }
-```
 
-    ## Estimating time 1 ,2 ,3 ,4 ,5 ,6 ,7 ,8 ,9 ,10
-
-``` r
 # take a look at the output for first outputed data set
 rtss.rslt[[1]]
 ```
 
-    ## $est
-    ##            [,1]
-    ## 0 1 0.004466103
-    ## 1 1 0.001788243
-    ## 0 2 0.175206417
-    ## 1 2 0.064402672
-    ## 
-    ## $var
-    ##               0 1           1 1           0 2           1 2
-    ## 0 1  1.841578e-06  1.004406e-09 -4.863680e-07  3.893243e-08
-    ## 1 1  1.004406e-09  3.826138e-07  4.083446e-08 -3.386951e-08
-    ## 0 2 -4.863680e-07  4.083446e-08  5.252178e-05  1.729760e-06
-    ## 1 2  3.893243e-08 -3.386951e-08  1.729760e-06  1.249981e-05
 
 The results can be combined through multiple outputation using the function `getMO`, which is not included in the `survtmle` package, but may be included at a future date.
 
-``` r
+```{r}
 #' getMO
 #' 
 #' A function that performs multiple outputation point estimation and
@@ -588,27 +509,14 @@ getMO <- function(rsltList,
 }
 ```
 
-We can use this function to obtain results on the simulated RTS,S/AS01 data.
-
-``` r
+We can use this function to obtain results on the simulated RTS,S/AS01 data. 
+```{r}
 # perform MO over the 10 simulated data sets
 mo.rslt <- getMO(rsltList = rtss.rslt, n = 6890)
 # look at the results
 mo.rslt
 ```
 
-    ## $cumInc
-    ##   Z J      cumInc
-    ## 1 0 1 0.003876734
-    ## 2 1 1 0.001698182
-    ## 3 0 2 0.175831921
-    ## 4 1 2 0.064477332
-    ## 
-    ## $ve
-    ##   J        ve     ve.low   ve.high
-    ## 1 1 0.5681688 0.06890686 0.7997212
-    ## 2 2 0.6333053 0.58267555 0.6777926
-    ## 
-    ## $sieve
-    ##      ratio ratio.low ratio.high         p
-    ## 1 1.177631 0.5426132   2.555809 0.6791799
+
+
+
