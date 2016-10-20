@@ -1,3 +1,6 @@
+---
+output: pdf_document
+---
 Installation of `survtmle` package
 ----------------------------------
 
@@ -37,7 +40,7 @@ head(rv144)
     ## 5     3     0   0    0      0      1       0        1      1       0
     ## 6     6     0   1    1      0      1       1        0      0       1
 
-Below we implement code that estimates the cumulative incidence for both matched and mismatched infections in both the vaccine and treatment arms. For computational convenience, we use a simplified Super Learner library relative to the one used in the manuscript. If one desires to use the same library as in the manuscript, those functions are available in the `superlearnerfunctions.R` file.
+Below we implement code that estimates the cumulative incidence for both matched and mismatched infections in both the vaccine and treatment arms. For computational convenience, we use a simplified Super Learner library relative to the one used in the manuscript. If one desires to use the same library as in the manuscript, those functions are available in the `superlearnerfunctions_rv144.R` file and can be implemented by sourcing the code from that file and uncommenting the `SL.ftime` and `SL.ctime` lines below.
 
 ``` r
 # will need package rpart and randomforest
@@ -47,6 +50,11 @@ library(randomForest)
 # set a seed because superlearner uses cross validation
 set.seed(12345)
 
+# to use simple super learner library, use these lines
+SL.lib <- c("SL.glm","SL.mean","SL.rpart")
+# to use super learner library from paper, use these lines
+# SL.lib <- c("SL.glm","SL.mean","SL.rpart.caret1","SL.rf.caret1")
+
 # fit the tmle at the last time point using survtmle
 tmle.fit <- survtmle(
     ftime = rv144$ftime, 
@@ -55,8 +63,8 @@ tmle.fit <- survtmle(
     t0 = 6, # final timepoint, 3 years post enrollment
     adjustVars = rv144[,4:10], # baseline covariates
     glm.trt = "1", # empirical estimates of treatment probabilities
-    SL.ftime = c("SL.glm","SL.mean","SL.rpart"),
-    SL.ctime = c("SL.glm","SL.mean","SL.rpart"),
+    SL.ftime = SL.lib, 
+    SL.ctime = SL.lib, 
     method = "mean", # for iterative mean-based tmle
     verbose = FALSE, 
     returnModels = TRUE # return super learner fits for use with timepoints()
@@ -313,3 +321,306 @@ arrows(x0=2:3,y0=vse[2:3,2],y1=12,length=0.075)
 ```
 
 ![](readme_files/figure-markdown_github/unnamed-chunk-6-1.png)
+
+Mock RTS,S/AS01 analysis
+------------------------
+
+We now produce an analysis of the multiply outputed mock RTS,S/AS01 data that are included with the `survtmle` package. See `?rtss` for further description of the data set.
+
+``` r
+# load the data from the package
+data(rtss)
+
+# look at the first 6 rows of data for first data set
+head(rtss[[1]])
+```
+
+    ##   ftime ftype vaccine ageWeeks weightForAgeZscore sex site1 site2 site3
+    ## 1     1     2       0       24        -1.76752196   0     0     0     0
+    ## 2    11     0       0       43        -0.15242755   1     1     0     0
+    ## 3    12     0       1       64        -1.29467573   0     0     0     1
+    ## 4    12     0       1       45         0.04930793   1     1     0     0
+    ## 5     1     0       1       72        -2.14905375   1     0     0     1
+    ## 6    12     0       0       47        -1.16692242   1     0     0     1
+    ##   site4 site5 heightForAgeZscore weightForHeightZscore armCircumZscore
+    ## 1     1     0        -0.46929480            -2.2368340      -1.5297559
+    ## 2     0     0        -0.07157323            -0.1274793      -0.2025151
+    ## 3     0     0        -1.93292932             0.1712379      -0.7105710
+    ## 4     0     0        -0.79276250             0.4606719       0.5164577
+    ## 5     0     0        -3.01736881            -0.6988993      -1.6883392
+    ## 6     0     0        -1.72782830            -1.1329046      -0.9535694
+    ##       hemog distInpatient distOutpatient startMonthCat
+    ## 1  9.388641     8.8817389      3.4446690             0
+    ## 2  9.844717    13.4724945      0.9352634             0
+    ## 3 11.159146     8.7846917      0.4648378             0
+    ## 4 12.223923    24.6145392      4.3018327             1
+    ## 5  8.812265    12.0307045      5.9528733             0
+    ## 6  8.963886     0.9994255      0.9952656             0
+
+For simplicity, we will focus on implementing the analysis at a single timepoint to illustrate how the multiple outputation procedure works. The `timepoints` function could easily be used to duplicate the analysis across every one month period. As with the RV144 analysis above, we will show code illustrating the method using a simplified Super Learner library. If one desires to use the Super Learner library from the paper, those functions are available in the `superlearnerfunctions_rtss.RData` file.
+
+``` r
+# needed packages 
+library(rpart)
+library(randomForest)
+library(gbm)
+```
+
+    ## Loading required package: survival
+
+    ## Loading required package: lattice
+
+    ## Loading required package: splines
+
+    ## Loading required package: parallel
+
+    ## Loaded gbm 2.1.1
+
+``` r
+# set a seed because superlearner uses cross validation
+set.seed(12345)
+
+# to use simple super learner library, use these lines
+SL.lib <- c("SL.glm","SL.mean")
+# to use super learner library from paper, use these lines
+# SL.lib <- list(c("SL.glm","All"),
+#                c("SL.gam","screen.corRank5"),
+#                c("SL.gam","screen.corRank10"),
+#                c("SL.gbm.itMeans","All"),
+#                c("SL.randomForest.itMeans","All"),
+#                c("SL.mean","All"),
+#                c("SL.step.interaction","screen.corRank5"),
+#                c("SL.step.forward","All"),
+#                c("SL.glm","trtOnlyScreen"),
+#                c("SL.glm","sitezScreen"),
+#                c("SL.glm.interaction","sitezScreen"))
+
+
+# initialize empty list for results
+rtss.rslt <- vector(mode = "list", length = 10)
+# fit the tmle at time 4 for each of the MO data sets
+for(m in 1:10){
+    # print messages to indicate progress
+    if(m==1){
+        cat("Estimating time 1")
+    }else{
+        cat(paste0(" ,",m))
+    }
+    
+    rtss.rslt[[m]] <- survtmle(
+        ftime = rtss[[m]]$ftime, 
+        ftype = rtss[[m]]$ftype,
+        trt = rtss[[m]]$vaccine,
+        t0 = 4, # four months post-vaccination
+        adjustVars = rtss[[m]][,4:ncol(rtss[[m]])], # baseline covariates
+        glm.trt = "1", # empirical estimates of treatment probabilities
+        SL.ftime = SL.lib, 
+        SL.ctime = SL.lib, 
+        method = "mean", 
+        verbose = FALSE, 
+        returnModels = FALSE # to save space
+    )
+}
+```
+
+    ## Estimating time 1 ,2 ,3 ,4 ,5 ,6 ,7 ,8 ,9 ,10
+
+``` r
+# take a look at the output for first outputed data set
+rtss.rslt[[1]]
+```
+
+    ## $est
+    ##            [,1]
+    ## 0 1 0.004466103
+    ## 1 1 0.001788243
+    ## 0 2 0.175206417
+    ## 1 2 0.064402672
+    ## 
+    ## $var
+    ##               0 1           1 1           0 2           1 2
+    ## 0 1  1.841578e-06  1.004406e-09 -4.863680e-07  3.893243e-08
+    ## 1 1  1.004406e-09  3.826138e-07  4.083446e-08 -3.386951e-08
+    ## 0 2 -4.863680e-07  4.083446e-08  5.252178e-05  1.729760e-06
+    ## 1 2  3.893243e-08 -3.386951e-08  1.729760e-06  1.249981e-05
+
+The results can be combined through multiple outputation using the function `getMO`, which is not included in the `survtmle` package, but may be included at a future date.
+
+``` r
+#' getMO
+#' 
+#' A function that performs multiple outputation point estimation and
+#' confidence interval calculation. 
+#' 
+#' @param rsltList A \code{list} of output from \code{survtmle} at 
+#' a single timpoint, where each entry in the list corresponds with 
+#' the results for one outputed data set. 
+#' @param N The number of rows in the data used to compute the 
+#' \code{survtmle} output. This is needed for variance calculations.
+#' @return A list of \code{data.frames} containing results for the
+#' multiply outputed estimates of cumulative incidence, vaccine efficacy,
+#' and vaccine sieve effects and corresponding confidence intervals. 
+#' The sieve effect output also includes a p-value for the test of equal
+#' vaccine efficacy between groups. 
+
+getMO <- function(rsltList,
+                  n = 6890){
+    M <- length(rsltList)
+    # initialize empty result lists
+    FVector_Z0_J1 <- FVector_Z1_J1 <- rep(NA,M)
+    FVector_Z0_J2 <-FVector_Z1_J2 <- rep(NA,M)
+    varLogCumIncRatio_J2 <- varLogCumIncRatio_J1 <- rep(NA,M)
+    varVector_Z0_J1 <- varVector_Z1_J1 <- rep(NA,M)
+    varVector_Z0_J2 <- varVector_Z1_J2 <- rep(NA,M)
+    Dmat_Z0_J1 <- Dmat_Z1_J1 <- matrix(NA,M,n)
+    Dmat_Z0_J2 <- Dmat_Z1_J2 <- matrix(NA,M,n)
+    
+    ct <- 0
+    for(i in 1:M){
+        fit <- rsltList[[i]]
+        ct <- ct+1
+        # vector of estimates
+        FVector_Z0_J1[ct] <- fit$est[1]
+        FVector_Z1_J1[ct] <- fit$est[2]
+        FVector_Z0_J2[ct] <- fit$est[3]
+        FVector_Z1_J2[ct] <- fit$est[4]
+        # matrix of influence curves
+        Dmat_Z0_J1[ct,] <- fit$ic[,1]
+        Dmat_Z1_J1[ct,] <- fit$ic[,2]
+        Dmat_Z0_J2[ct,] <- fit$ic[,3]
+        Dmat_Z1_J2[ct,] <- fit$ic[,4]
+    }
+
+    #------------------------------
+    # estimates of cumulative inc. 
+    #------------------------------
+    # point estimates
+    cumInc_Z0_J1_MO <- mean(FVector_Z0_J1)
+    cumInc_Z1_J1_MO <- mean(FVector_Z1_J1)
+    cumInc_Z0_J2_MO <- mean(FVector_Z0_J2)
+    cumInc_Z1_J2_MO <- mean(FVector_Z1_J2)
+
+    # variance estimates
+    a <- rep(1,M)
+    varIC_Z0_J1_MO <- varIC_Z1_J1_MO <- 0
+    varIC_Z0_J2_MO <-  varIC_Z1_J2_MO <- 0
+    for(i in 1:n){
+        varIC_Z0_J1_MO <- varIC_Z0_J1_MO + 
+            1/n^2 * tcrossprod(1/M * t(a)%*%Dmat_Z0_J1[,i])
+        varIC_Z1_J1_MO <- varIC_Z1_J1_MO + 
+            1/n^2 * tcrossprod(1/M * t(a)%*%Dmat_Z1_J1[,i])
+        varIC_Z0_J2_MO <- varIC_Z0_J2_MO + 
+            1/n^2 * tcrossprod(1/M * t(a)%*%Dmat_Z0_J2[,i])
+        varIC_Z1_J2_MO <- varIC_Z1_J2_MO + 
+            1/n^2 * tcrossprod(1/M * t(a)%*%Dmat_Z1_J2[,i])
+    }
+
+    #---------------------------------------
+    # estimates for log cum. inc. ratio
+    #---------------------------------------
+    # point estimates
+    logCumIncRatio_J1_MO <- mean(log(FVector_Z1_J1/FVector_Z0_J1))
+    logCumIncRatio_J2_MO <- mean(log(FVector_Z1_J2/FVector_Z0_J2))
+
+    # variance estimates
+    a <- rep(1,M)
+    gMatrix_J1 <- t(cbind(-1/FVector_Z0_J1, 1/FVector_Z1_J1))
+    gMatrix_J2 <- t(cbind(-1/FVector_Z0_J2, 1/FVector_Z1_J2))
+
+    varLogCumIncRatio_J1_MO <- varLogCumIncRatio_J2_MO <- 0
+    for(i in 1:n){
+        thisD_J1 <- rbind(Dmat_Z0_J1[,i],Dmat_Z1_J1[,i])
+        thisD_J2 <- rbind(Dmat_Z0_J2[,i],Dmat_Z1_J2[,i])
+        thisMat1 <- colSums(gMatrix_J1*thisD_J1)
+        thisMat2 <- colSums(gMatrix_J2*thisD_J2)
+        varLogCumIncRatio_J1_MO <- varLogCumIncRatio_J1_MO + 
+           1/n^2 * tcrossprod(1/M * t(a)%*%thisMat1)
+        varLogCumIncRatio_J2_MO <- varLogCumIncRatio_J2_MO + 
+            1/n^2 * tcrossprod(1/M * t(a)%*%thisMat2)
+    }
+    
+    #------------------------------
+    # estimates for sieve effects
+    #------------------------------
+    # point estimates
+    logRatioCumIncRatio_MO <- mean(
+        log(FVector_Z1_J1/FVector_Z0_J1 / (FVector_Z1_J2/FVector_Z0_J2))
+    )
+    # variance estimates
+    a <- rep(1,M)
+    gMatrix <- t(cbind(
+        -1/FVector_Z0_J1,1/FVector_Z1_J1, 1/FVector_Z0_J2,-1/FVector_Z1_J2
+      ))
+
+    varLogRatioCumIncRatio_MO <- 0
+    for(i in 1:n){
+        thisD <- rbind(Dmat_Z0_J1[,i],Dmat_Z1_J1[,i],
+                       Dmat_Z0_J2[,i],Dmat_Z1_J2[,i])
+        thisMat <- colSums(gMatrix*thisD)
+        varLogRatioCumIncRatio_MO <- varLogRatioCumIncRatio_MO + 
+            1/n^2 * tcrossprod(1/M * t(a)%*%thisMat)
+    }
+    
+    #------------------------------
+    # format results
+    #------------------------------
+    out <- vector(mode="list",length=0L)
+  
+    out$cumInc <- data.frame(Z=c(0,1,0,1),J=c(1,1,2,2),
+                               cumInc=c(cumInc_Z0_J1_MO, 
+                               cumInc_Z1_J1_MO, 
+                               cumInc_Z0_J2_MO, 
+                               cumInc_Z1_J2_MO))
+
+    out$ve <- data.frame(
+          J=c(1,2),
+          ve=c(1-exp(logCumIncRatio_J1_MO),
+               1-exp(logCumIncRatio_J2_MO)),
+          ve.low=c(1 - exp(logCumIncRatio_J1_MO +
+                               1.96*sqrt(varLogCumIncRatio_J1_MO)),
+                   1 - exp(logCumIncRatio_J2_MO +
+                               1.96*sqrt(varLogCumIncRatio_J2_MO))),
+          ve.high=c(1 - exp(logCumIncRatio_J1_MO -
+                                1.96*sqrt(varLogCumIncRatio_J1_MO)),
+                    1 - exp(logCumIncRatio_J2_MO -
+                                1.96*sqrt(varLogCumIncRatio_J2_MO)))
+          )
+    
+    out$sieve <- data.frame(
+        ratio=exp(logRatioCumIncRatio_MO),
+        ratio.low=exp(logRatioCumIncRatio_MO -
+                         1.96*sqrt(varLogRatioCumIncRatio_MO)),
+        ratio.high=exp(logRatioCumIncRatio_MO +
+                           1.96*sqrt(varLogRatioCumIncRatio_MO)),
+        p=2*pnorm(-abs(logRatioCumIncRatio_MO/
+                           sqrt(varLogRatioCumIncRatio_MO)))
+        )
+  
+  return(out)
+}
+```
+
+We can use this function to obtain results on the simulated RTS,S/AS01 data.
+
+``` r
+# perform MO over the 10 simulated data sets
+mo.rslt <- getMO(rsltList = rtss.rslt, n = 6890)
+# look at the results
+mo.rslt
+```
+
+    ## $cumInc
+    ##   Z J      cumInc
+    ## 1 0 1 0.003876734
+    ## 2 1 1 0.001698182
+    ## 3 0 2 0.175831921
+    ## 4 1 2 0.064477332
+    ## 
+    ## $ve
+    ##   J        ve     ve.low   ve.high
+    ## 1 1 0.5681688 0.06890686 0.7997212
+    ## 2 2 0.6333053 0.58267555 0.6777926
+    ## 
+    ## $sieve
+    ##      ratio ratio.low ratio.high         p
+    ## 1 1.177631 0.5426132   2.555809 0.6791799
